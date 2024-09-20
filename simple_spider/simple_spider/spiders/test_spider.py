@@ -7,6 +7,9 @@ from scrapy import signals
 from scrapy.crawler import Crawler
 from scrapy.http import Request, Response
 
+
+
+
 class MySpider(scrapy.Spider):
     name = "send"
     start_urls = ["https://test-rg8.ddns.net/task"]

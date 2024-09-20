@@ -22,6 +22,8 @@ class ProxySpider(Spider):
     max_retries = 2
 
     proxies = [
+        "http://185.238.228.202:80",
+        "http://185.238.228.67:80",
         "http://188.114.99.171:80",
         "http://188.114.96.46:80",
         "http://185.238.228.96:80",
@@ -62,7 +64,6 @@ class ProxySpider(Spider):
         if self.proxies:
             new_proxy = self.proxies.pop()
             self.log(f"Retrying with new proxy {new_proxy}")
-            
             retry_request = request.copy()
             retry_request.meta["proxy"] = new_proxy
             retry_request.meta["retry_count"] = retry_count + 1
@@ -71,17 +72,14 @@ class ProxySpider(Spider):
             self.log(f"All proxies are failed for url {URL_FOR_SCRAPING}")
 
     def parse(self, response: Response):
-        for elem in response.xpath('//*[@id="proxy_list"]/tbody/tr'):       
+        for elem in response.xpath('//*[@id="proxy_list"]/tbody/tr'):   
             script_text = elem.xpath('td[1]/script/text()').get()
             if script_text:
                 decoded_ip = script_text.split('"')[1]
                 ip = base64.b64decode(decoded_ip).decode("utf-8")
                 port = elem.xpath('td[2]/span/text()').get()
-                #yield {
-                #    "ip": ip,
-                #    "port": port
-                #}
                 self.parsed_proxies.append(f"{ip}:{port}")
+
         self.pages_parsed += 1
         if self.pages_parsed <= LIMIT_PAGES_TO_PARSE:
             next_page = response.xpath('/html/body/div[2]/div[2]/div[7]/a[last()]')[0]
@@ -96,49 +94,38 @@ class ProxySpider(Spider):
                 },
             )
         else:
-            yield Request(
-                url=URL_FOR_SENDING_DATA, 
-                method='GET',
-                callback=self.get_token
-            )
-    """
-    def send_callback(self, reason):
-        self.crawler.engine.crawl(
-            Request(
-                url=URL_FOR_SENDING_DATA, 
-                method='GET',
-                callback=self.get_token
-            )
-        )
-    """
-    def get_token(self, reason):
-        yield Request(
-            url=URL_FOR_GETTING_FORM_TOKEN,
-            callback=self.send_data
-        )
+            self.proxy_chunks = [
+                self.parsed_proxies[i: i + LIMIT_VALUES_TO_SEND]
+                for i in range(0, len(self.parsed_proxies), LIMIT_VALUES_TO_SEND)
+            ]
+            if self.proxy_chunks:
+                next_chunk = self.proxy_chunks.pop()
+                yield Request(
+                    url=URL_FOR_GETTING_FORM_TOKEN,
+                    method='GET',
+                    callback=self.send_data,
+                    dont_filter=True,
+                    cb_kwargs=dict(proxy_chunk=next_chunk),
+                )
 
-    def send_data(self, response: Response):
+    def send_data(self, response: Response, proxy_chunk: list[str]):
         response_cookie = response.headers.get('Set-Cookie')
         form_token = response_cookie.decode("utf-8").split(";")[0]
         cookies = {
             "form_token": form_token.split("=")[1],
             "x-user_id": "t_7e7ea5ef"
         }
-        proxy_chunks = [
-            self.parsed_proxies[i: i + LIMIT_VALUES_TO_SEND]
-            for i in range(0, len(self.parsed_proxies), LIMIT_VALUES_TO_SEND)
-        ]
-        for chunk in proxy_chunks:
-            data = self.prepare_data(chunk)
-            yield Request(
-                url=URL_FOR_SENDING_RESULT,
-                method='POST',
-                body=json.dumps(data),
-                cookies=cookies,
-                headers={'Content-Type': 'application/json'},
-                callback=self.after_submission,
-                cb_kwargs=dict(proxy_chunk=chunk)
-            )
+        data = self.prepare_data(proxy_chunk)
+        yield Request(
+            url=URL_FOR_SENDING_RESULT,
+            method='POST',
+            body=json.dumps(data),
+            cookies=cookies,
+            headers={'Content-Type': 'application/json'},
+            callback=self.after_submission,
+            dont_filter=True,
+            cb_kwargs=dict(proxy_chunk=proxy_chunk),
+        )
 
     def prepare_data(self, proxies: list[str]) -> dict:
         return {
@@ -147,13 +134,22 @@ class ProxySpider(Spider):
             "proxies": ", ".join(proxies)
         }
 
-    def after_submission(self, response: Response, proxy_chunk: list):
+    def after_submission(self, response: Response, proxy_chunk: list[str]):
         save_id = response.json()["save_id"]
         yield {
             save_id: proxy_chunk
         }
+        if self.proxy_chunks:
+            next_chunk = self.proxy_chunks.pop()
+            yield Request(
+                url=URL_FOR_GETTING_FORM_TOKEN,
+                method='GET',
+                callback=self.send_data,
+                dont_filter=True,
+                cb_kwargs=dict(proxy_chunk=next_chunk),
+            )
 
-    def spider_closed(self, spider, reason):
+    def spider_closed(self, spider: Spider, reason):
         start_time = self.crawler.stats.get_value('start_time')
         finish_time = datetime.now(UTC)
         spent_time = str(finish_time - start_time).split(".")[0]
