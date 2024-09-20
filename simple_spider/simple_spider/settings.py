@@ -71,12 +71,12 @@ CONCURRENT_REQUESTS = 1
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
 AUTOTHROTTLE_ENABLED = True
 # The initial download delay
-AUTOTHROTTLE_START_DELAY = 10
+AUTOTHROTTLE_START_DELAY = 8
 # The maximum download delay to be set in case of high latencies
 AUTOTHROTTLE_MAX_DELAY = 60
 # The average number of requests Scrapy should be sending in parallel to
 # each remote server
-AUTOTHROTTLE_TARGET_CONCURRENCY = 0.5
+AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
 # Enable showing throttling stats for every response received:
 AUTOTHROTTLE_DEBUG = True
 
@@ -97,9 +97,9 @@ FEED_EXPORT_ENCODING = "utf-8"
 RETRY_HTTP_CODES = [429]
 RETRY_TIMES = 5
 
-DOWNLOAD_DELAY = 2  # Set an initial delay for regular requests
-RETRY_BACKOFF_BASE = 5  # Exponential backoff starting at 2 seconds
+DOWNLOAD_DELAY = 2
+RETRY_BACKOFF_BASE = 4
 DOWNLOADER_MIDDLEWARES = {
     'scrapy.downloadermiddlewares.retry.RetryMiddleware': 90,
-    'scrapy.extensions.throttle.AutoThrottle': 500,  # Ensure AutoThrottle is active
+    'scrapy.extensions.throttle.AutoThrottle': 500,
 }
