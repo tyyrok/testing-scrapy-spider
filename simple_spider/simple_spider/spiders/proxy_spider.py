@@ -8,7 +8,6 @@ from scrapy.crawler import Crawler
 from scrapy.http import Response, Request
 
 URL_FOR_SCRAPING = "http://free-proxy.cz/en/"
-URL_FOR_SENDING_DATA = "https://test-rg8.ddns.net/task"
 URL_FOR_GETTING_FORM_TOKEN = "https://test-rg8.ddns.net/api/get_token"
 URL_FOR_SENDING_RESULT = "https://test-rg8.ddns.net/api/post_proxies"
 LIMIT_PAGES_TO_PARSE = 5
@@ -103,12 +102,12 @@ class ProxySpider(Spider):
                 yield Request(
                     url=URL_FOR_GETTING_FORM_TOKEN,
                     method='GET',
-                    callback=self.send_data,
+                    callback=self.send_data_callback,
                     dont_filter=True,
                     cb_kwargs=dict(proxy_chunk=next_chunk),
                 )
 
-    def send_data(self, response: Response, proxy_chunk: list[str]):
+    def send_data_callback(self, response: Response, proxy_chunk: list[str]):
         response_cookie = response.headers.get('Set-Cookie')
         form_token = response_cookie.decode("utf-8").split(";")[0]
         cookies = {
@@ -122,7 +121,7 @@ class ProxySpider(Spider):
             body=json.dumps(data),
             cookies=cookies,
             headers={'Content-Type': 'application/json'},
-            callback=self.after_submission,
+            callback=self.after_submission_callback,
             dont_filter=True,
             cb_kwargs=dict(proxy_chunk=proxy_chunk),
         )
@@ -134,7 +133,7 @@ class ProxySpider(Spider):
             "proxies": ", ".join(proxies)
         }
 
-    def after_submission(self, response: Response, proxy_chunk: list[str]):
+    def after_submission_callback(self, response: Response, proxy_chunk: list[str]):
         save_id = response.json()["save_id"]
         yield {
             save_id: proxy_chunk
@@ -144,12 +143,12 @@ class ProxySpider(Spider):
             yield Request(
                 url=URL_FOR_GETTING_FORM_TOKEN,
                 method='GET',
-                callback=self.send_data,
+                callback=self.send_data_callback,
                 dont_filter=True,
                 cb_kwargs=dict(proxy_chunk=next_chunk),
             )
 
-    def spider_closed(self, spider: Spider, reason):
+    def spider_closed(self, spider: Spider, reason: str):
         start_time = self.crawler.stats.get_value('start_time')
         finish_time = datetime.now(UTC)
         spent_time = str(finish_time - start_time).split(".")[0]
